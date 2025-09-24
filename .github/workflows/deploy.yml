@@ -1,4 +1,4 @@
-name: Build and Deploy devicemanage-fe
+name: Build and Deploy msp-fe
 
 on:
    push:
@@ -24,10 +24,10 @@ jobs:
               context: .
               file: Dockerfile
               push: true
-              tags: phamtuankhoi/devicemanage-fe-frontend-v1:latest
-              build-args: |
-                 VITE_API_URL=${{ secrets.VITE_API_URL }}
-                 VITE_WS_DOMAIN=${{ secrets.VITE_WS_DOMAIN }}
+              tags: phamtuankhoi/msp-fe:latest
+              # build-args: |
+              #    VITE_API_URL=${{ secrets.VITE_API_URL }}
+              #    VITE_WS_DOMAIN=${{ secrets.VITE_WS_DOMAIN }}
 
          - name: Deploy to Droplet
            uses: appleboy/ssh-action@v0.1.10
@@ -36,7 +36,7 @@ jobs:
               username: root
               password: ${{ secrets.DROPLET_PASSWORD }}
               script: |
-                 docker rm -f devicemanage-fe-container || true
-                 docker rmi phamtuankhoi/devicemanage-fe-frontend-v1 || true
-                 docker-compose -f docker-compose.esg.yml pull devicemanage-fe
-                 docker-compose -f docker-compose.esg.yml up -d devicemanage-fe
+                 docker rm -f msp-fe-container || true
+                 docker rmi phamtuankhoi/msp-fe || true
+                 docker-compose -f docker-compose.esg.yml pull msp-fe
+                 docker-compose -f docker-compose.esg.yml up -d msp-fe
