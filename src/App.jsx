@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import * as mediasoupClient from "mediasoup-client";
 
-const SERVER_URL = "http://172.17.90.188:3001";
+const SERVER_URL = "https://dev.be.msp.sevago.local";
 
 function App() {
    const [socket, setSocket] = useState(null);
