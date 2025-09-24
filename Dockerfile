@@ -14,7 +14,7 @@ WORKDIR /app
 RUN npm install -g serve
 
 # copy dist từ stage build
-COPY --from=build /app/dist ./dist
+COPY --from=build /app/build ./build
 
 EXPOSE 3000
 
