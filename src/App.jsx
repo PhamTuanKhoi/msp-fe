@@ -2,7 +2,11 @@ import React, { useState, useEffect, useRef } from "react";
 import io from "socket.io-client";
 import * as mediasoupClient from "mediasoup-client";
 
-const SERVER_URL = "https://dev.be.msp.sevago.local";
+const SERVER_URL =
+   process.env.REACT_APP_API_URL ||
+   (window.location.protocol === "https:"
+      ? "https://dev.be.msp.sevago.local"
+      : "http://localhost:7003");
 
 function App() {
    const [socket, setSocket] = useState(null);
@@ -16,11 +20,16 @@ function App() {
    const [videoProducer, setVideoProducer] = useState(null);
    const [audioProducer, setAudioProducer] = useState(null);
    const [screenProducer, setScreenProducer] = useState(null);
+   const [consumers, setConsumers] = useState(new Map());
    const localVideoRef = useRef(null);
    const deviceRef = useRef(null);
    const recvTransportRef = useRef(null);
+
    useEffect(() => {
-      const newSocket = io(SERVER_URL);
+      const newSocket = io(SERVER_URL, {
+         transports: ["websocket"],
+         upgrade: false,
+      });
       setSocket(newSocket);
 
       newSocket.on("connect", () => {
@@ -136,6 +145,8 @@ function App() {
                existingProducers,
             } = response;
 
+            console.log(">> joinRoom response", response);
+
             // Tạo Device và tải
             const newDevice = await createDevice(rtpCapabilities);
 
@@ -157,9 +168,12 @@ function App() {
 
             // Cập nhật danh sách người tham gia
             setPeers(peerIds.filter((id) => id !== socket.id));
+            console.log(">> setPeers", peerIds);
 
             // Tạo Consumer cho các Producer cũ
+            console.log("Existing producers:", existingProducers);
             for (const producerInfo of existingProducers) {
+               console.log("Consuming existing producer:", producerInfo);
                await consume(producerInfo);
             }
 
@@ -179,6 +193,19 @@ function App() {
          // Khởi tạo trạng thái cục bộ
          setJoined(false);
          setPeers([]);
+
+         // Cleanup consumers
+         consumers.forEach(({ consumer }) => {
+            consumer.close();
+         });
+         setConsumers(new Map());
+
+         // Clear remote media elements
+         const remoteMediaDiv = document.getElementById("remote-media");
+         if (remoteMediaDiv) {
+            remoteMediaDiv.innerHTML = "";
+         }
+
          // Xóa tài nguyên
          if (localStream) {
             localStream.getTracks().forEach((track) => track.stop());
@@ -274,6 +301,14 @@ function App() {
       const recvTransport = recvTransportRef.current;
       if (!device || !recvTransport) {
          console.log("Device or RecvTransport not initialized");
+         return;
+      }
+
+      // Check if consumer already exists
+      const consumerKey = `${peerId}-${producerId}`;
+      if (consumers.has(consumerKey)) {
+         console.log("Consumer already exists:", consumerKey);
+         return;
       }
 
       socket.emit(
@@ -303,6 +338,13 @@ function App() {
             // Consumer를 resume합니다.
             await consumer.resume();
 
+            // Store consumer
+            setConsumers((prev) => {
+               const newConsumers = new Map(prev);
+               newConsumers.set(consumerKey, { consumer, peerId, producerId, kind });
+               return newConsumers;
+            });
+
             // 수신한 미디어를 재생
             const remoteStream = new MediaStream();
             remoteStream.addTrack(consumer.track);
@@ -313,17 +355,23 @@ function App() {
                videoElement.autoplay = true;
                videoElement.playsInline = true;
                videoElement.width = 200;
+               videoElement.id = `video-${consumerKey}`;
+               videoElement.style.margin = "5px";
                document.getElementById("remote-media").appendChild(videoElement);
+               console.log("Added video element for:", consumerKey);
             } else if (consumer.kind === "audio") {
                const audioElement = document.createElement("audio");
                audioElement.srcObject = remoteStream;
                audioElement.autoplay = true;
                audioElement.controls = true;
+               audioElement.id = `audio-${consumerKey}`;
+               audioElement.style.margin = "5px";
                document.getElementById("remote-media").appendChild(audioElement);
 
                // 브라우저의 자동재생 정책을 우회하기 위해 재생 시도
                try {
                   await audioElement.play();
+                  console.log("Audio playing for:", consumerKey);
                } catch (err) {
                   console.error("Audio playback failed:", err);
                }
