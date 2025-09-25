@@ -26,10 +26,7 @@ function App() {
    const recvTransportRef = useRef(null);
 
    useEffect(() => {
-      const newSocket = io(SERVER_URL, {
-         transports: ["websocket"],
-         upgrade: false,
-      });
+      const newSocket = io(SERVER_URL);
       setSocket(newSocket);
 
       newSocket.on("connect", () => {
