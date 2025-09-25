@@ -257,8 +257,14 @@ function App() {
    const startCamera = async () => {
       if (!sendTransport) return;
 
+      // FIX: Thêm constraints cụ thể để tránh video bị đen
       const stream = await navigator.mediaDevices.getUserMedia({
-         video: true,
+         video: {
+            width: { ideal: 640, max: 1280 },
+            height: { ideal: 480, max: 720 },
+            frameRate: { ideal: 30, max: 60 },
+         },
+         audio: false, // Tách riêng audio vì đã có audioProducer
       });
       setLocalStream(stream);
 
@@ -267,6 +273,8 @@ function App() {
       }
 
       const videoTrack = stream.getVideoTracks()[0];
+      console.log("Local video track settings:", videoTrack.getSettings());
+
       const newVideoProducer = await sendTransport.produce({ track: videoTrack });
       setVideoProducer(newVideoProducer);
    };
@@ -283,17 +291,18 @@ function App() {
          videoProducer.close();
          setVideoProducer(null);
       }
-      if (audioProducer) {
-         audioProducer.close();
-         setAudioProducer(null);
-      }
    };
 
    const startScreenShare = async () => {
       if (!sendTransport) return;
 
       const stream = await navigator.mediaDevices.getDisplayMedia({
-         video: true,
+         video: {
+            width: { ideal: 1280, max: 1920 },
+            height: { ideal: 720, max: 1080 },
+            frameRate: { ideal: 15, max: 30 },
+         },
+         audio: false,
       });
       const screenTrack = stream.getVideoTracks()[0];
 
@@ -377,72 +386,115 @@ function App() {
                debugVideoTrack(consumer.track);
 
                const videoElement = document.createElement("video");
-               videoElement.srcObject = remoteStream;
-               videoElement.autoplay = true;
-               videoElement.playsInline = true;
-               videoElement.muted = true; // Fix autoplay policy issue
-               videoElement.width = 200;
-               videoElement.id = `video-${consumerKey}`;
-               videoElement.style.margin = "5px";
-               videoElement.style.border = "1px solid blue"; // Debug CSS
-               videoElement.style.background = "black"; // Debug CSS
 
-               // Add extensive event listeners for debugging
-               videoElement.addEventListener("loadstart", () =>
-                  console.log("Video loadstart:", consumerKey)
-               );
-               videoElement.addEventListener("loadedmetadata", () =>
-                  console.log("Video metadata loaded:", consumerKey)
-               );
-               videoElement.addEventListener("loadeddata", () =>
-                  console.log("Video loadeddata:", consumerKey)
-               );
-               videoElement.addEventListener("canplay", () =>
-                  console.log("Video canplay:", consumerKey)
-               );
-               videoElement.addEventListener("canplaythrough", () =>
-                  console.log("Video canplaythrough:", consumerKey)
-               );
-               videoElement.addEventListener("playing", () =>
-                  console.log("Video playing:", consumerKey)
-               );
-               videoElement.addEventListener("pause", () =>
-                  console.log("Video paused:", consumerKey)
-               );
-               videoElement.addEventListener("ended", () =>
-                  console.log("Video ended:", consumerKey)
-               );
-               videoElement.addEventListener("error", (e) => {
-                  console.error("Video element error:", e);
-                  console.error("Video error details:", {
-                     error: videoElement.error,
-                     networkState: videoElement.networkState,
-                     readyState: videoElement.readyState,
+               // FIX: Thêm attributes quan trọng cho video element
+               videoElement.setAttribute("playsinline", "");
+               videoElement.setAttribute("autoplay", "");
+               videoElement.setAttribute("muted", "");
+               videoElement.style.width = "200px";
+               videoElement.style.height = "auto";
+               videoElement.style.margin = "5px";
+               videoElement.style.border = "1px solid blue";
+               videoElement.style.background = "#000000";
+               videoElement.style.objectFit = "cover"; // FIX: Đảm bảo video fill element
+               videoElement.id = `video-${consumerKey}`;
+
+               // FIX: Event handlers để debug và fix video issues
+               let metadataLoaded = false;
+
+               videoElement.addEventListener("loadstart", () => {
+                  console.log("✅ Video loadstart:", consumerKey);
+               });
+
+               videoElement.addEventListener("loadedmetadata", () => {
+                  console.log("✅ Video metadata loaded:", consumerKey);
+                  console.log(
+                     "Video dimensions:",
+                     videoElement.videoWidth,
+                     "x",
+                     videoElement.videoHeight
+                  );
+                  metadataLoaded = true;
+
+                  // FIX: Force play sau khi metadata loaded
+                  videoElement.play().catch((err) => {
+                     console.error("❌ Video play after metadata failed:", err);
                   });
                });
 
-               videoElement.onerror = (e) => {
-                  console.error("Video element error:", e);
-               };
-
-               videoElement.onloadedmetadata = () => {
-                  console.log("Video metadata loaded for:", consumerKey);
-               };
-
-               document.getElementById("remote-media").appendChild(videoElement);
-
-               // Debug after adding to DOM
-               setTimeout(() => {
-                  debugVideoElement(videoElement, consumerKey);
-               }, 1000);
-
-               // Try manual play if autoplay fails
-               videoElement.play().catch((err) => {
-                  console.error("Auto video play failed:", err);
-                  console.log("You may need to click 'Play All Remote Videos' button");
+               videoElement.addEventListener("loadeddata", () => {
+                  console.log("✅ Video data loaded:", consumerKey);
                });
 
-               console.log("Added video element for:", consumerKey);
+               videoElement.addEventListener("canplay", () => {
+                  console.log("✅ Video can play:", consumerKey);
+                  if (!metadataLoaded) {
+                     videoElement.play().catch((err) => {
+                        console.error("❌ Video play on canplay failed:", err);
+                     });
+                  }
+               });
+
+               videoElement.addEventListener("playing", () => {
+                  console.log("✅ Video playing:", consumerKey);
+               });
+
+               videoElement.addEventListener("pause", () => {
+                  console.log("⚠️ Video paused:", consumerKey);
+               });
+
+               videoElement.addEventListener("stalled", () => {
+                  console.log("⚠️ Video stalled:", consumerKey);
+               });
+
+               videoElement.addEventListener("waiting", () => {
+                  console.log("⚠️ Video waiting:", consumerKey);
+               });
+
+               videoElement.addEventListener("error", (e) => {
+                  console.error("❌ Video error:", consumerKey, e);
+                  const error = videoElement.error;
+                  if (error) {
+                     console.error("Video error details:", {
+                        code: error.code,
+                        message: error.message,
+                        MEDIA_ERR_ABORTED: error.MEDIA_ERR_ABORTED,
+                        MEDIA_ERR_NETWORK: error.MEDIA_ERR_NETWORK,
+                        MEDIA_ERR_DECODE: error.MEDIA_ERR_DECODE,
+                        MEDIA_ERR_SRC_NOT_SUPPORTED: error.MEDIA_ERR_SRC_NOT_SUPPORTED,
+                     });
+                  }
+               });
+
+               // FIX: Set srcObject và thêm vào DOM
+               videoElement.srcObject = remoteStream;
+               document.getElementById("remote-media").appendChild(videoElement);
+
+               // FIX: Force reload nếu cần thiết
+               setTimeout(() => {
+                  if (videoElement.readyState === 0 && videoElement.networkState === 2) {
+                     console.log("🔄 Forcing video reload for:", consumerKey);
+                     videoElement.load();
+                  }
+                  debugVideoElement(videoElement, consumerKey);
+               }, 2000);
+
+               // FIX: Thêm fallback để refresh video track nếu bị stuck
+               setTimeout(() => {
+                  if (videoElement.videoWidth === 0 || videoElement.videoHeight === 0) {
+                     console.log("🔄 Video dimensions still 0, refreshing track:", consumerKey);
+
+                     // Tạo stream mới và gán lại
+                     const newStream = new MediaStream();
+                     newStream.addTrack(
+                        consumer.track.clone ? consumer.track.clone() : consumer.track
+                     );
+                     videoElement.srcObject = newStream;
+                     videoElement.load();
+                  }
+               }, 5000);
+
+               console.log("✅ Added video element for:", consumerKey);
             } else if (consumer.kind === "audio") {
                const audioElement = document.createElement("audio");
                audioElement.srcObject = remoteStream;
@@ -454,9 +506,9 @@ function App() {
 
                try {
                   await audioElement.play();
-                  console.log("Audio playing for:", consumerKey);
+                  console.log("✅ Audio playing for:", consumerKey);
                } catch (err) {
-                  console.error("Audio playback failed:", err);
+                  console.error("❌ Audio playback failed:", err);
                }
             }
          }
@@ -468,10 +520,21 @@ function App() {
       const videos = document.querySelectorAll("#remote-media video");
       videos.forEach(async (video, index) => {
          try {
+            console.log(`🔄 Trying to play video ${index}:`, {
+               readyState: video.readyState,
+               networkState: video.networkState,
+               paused: video.paused,
+               dimensions: `${video.videoWidth}x${video.videoHeight}`,
+            });
+
+            if (video.readyState === 0) {
+               video.load(); // Force reload
+            }
+
             await video.play();
-            console.log(`Video ${index} played successfully`);
+            console.log(`✅ Video ${index} played successfully`);
          } catch (err) {
-            console.error(`Video ${index} play failed:`, err);
+            console.error(`❌ Video ${index} play failed:`, err);
          }
       });
    };
@@ -495,7 +558,23 @@ function App() {
             peerId: value.peerId,
             producerId: value.producerId,
             track: value.consumer.track,
+            trackSettings: value.consumer.track.getSettings
+               ? value.consumer.track.getSettings()
+               : "N/A",
          });
+      });
+   };
+
+   const forceRefreshVideos = () => {
+      const videos = document.querySelectorAll("#remote-media video");
+      videos.forEach((video, index) => {
+         console.log(`🔄 Force refreshing video ${index}`);
+         const currentSrc = video.srcObject;
+         video.srcObject = null;
+         setTimeout(() => {
+            video.srcObject = currentSrc;
+            video.load();
+         }, 100);
       });
    };
 
@@ -526,18 +605,21 @@ function App() {
             </div>
          )}
 
-         {/* Debug Controls */}
+         {/* Enhanced Debug Controls */}
          {joined && (
             <div style={{ margin: "20px 0", padding: "10px", border: "1px solid #ccc" }}>
                <h3>Debug Controls</h3>
                <button onClick={playAllRemoteVideos} style={{ margin: "5px" }}>
-                  Play All Remote Videos
+                  🎬 Play All Remote Videos
                </button>
                <button onClick={debugRemoteMedia} style={{ margin: "5px" }}>
-                  Debug Remote Media
+                  🔍 Debug Remote Media
                </button>
                <button onClick={debugConsumers} style={{ margin: "5px" }}>
-                  Debug Consumers
+                  📊 Debug Consumers
+               </button>
+               <button onClick={forceRefreshVideos} style={{ margin: "5px" }}>
+                  🔄 Force Refresh Videos
                </button>
             </div>
          )}
@@ -559,7 +641,7 @@ function App() {
             <div
                id="remote-media"
                style={{
-                  border: "2px solid red", // Debug CSS
+                  border: "2px solid red",
                   minHeight: "200px",
                   background: "#f0f0f0",
                   padding: "10px",
@@ -567,7 +649,7 @@ function App() {
             ></div>
          </div>
 
-         {/* Add CSS for debugging */}
+         {/* Enhanced CSS */}
          <style jsx>{`
             #remote-media video {
                border: 1px solid blue !important;
@@ -577,6 +659,15 @@ function App() {
                max-width: 100%;
                height: auto;
                background: black;
+               object-fit: cover;
+            }
+
+            video {
+               -webkit-transform: translateZ(0);
+               -moz-transform: translateZ(0);
+               -ms-transform: translateZ(0);
+               -o-transform: translateZ(0);
+               transform: translateZ(0);
             }
          `}</style>
       </div>
