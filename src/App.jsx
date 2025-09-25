@@ -29,10 +29,12 @@ function App() {
 
       newSocket.on("new-peer", ({ peerId }) => {
          setPeers((prevPeers) => [...prevPeers, peerId]);
+         console.log("New peer:", peerId);
       });
 
       newSocket.on("peer-left", ({ peerId }) => {
          setPeers((prevPeers) => prevPeers.filter((id) => id !== peerId));
+         console.log("Peer left:", peerId);
       });
 
       return () => {
@@ -134,18 +136,18 @@ function App() {
                existingProducers,
             } = response;
 
-            // Device 생성 및 로드
+            // Tạo Device và tải
             const newDevice = await createDevice(rtpCapabilities);
 
-            // 송신용 Transport 생성
+            // Tạo Transport để gửi
             const newSendTransport = createSendTransport(newDevice, sendTransportOptions);
 
-            // 수신용 Transport 생성
+            // tạo Transport để nhận
             const newRecvTransport = createRecvTransport(newDevice, recvTransportOptions);
 
             socket.on("new-producer", handleNewProducer);
 
-            // 오디오 스트림 캡처 및 Producer 생성
+            // Lấy stream âm thanh và tạo Producer
             const audioTrack = await getLocalAudioStreamAndTrack();
             const newAudioProducer = await newSendTransport.produce({
                track: audioTrack,
@@ -153,10 +155,10 @@ function App() {
 
             setAudioProducer(newAudioProducer);
 
-            // 기존 참여자 목록 업데이트
+            // Cập nhật danh sách người tham gia
             setPeers(peerIds.filter((id) => id !== socket.id));
 
-            // 기존 Producer들에 대한 Consumer 생성
+            // Tạo Consumer cho các Producer cũ
             for (const producerInfo of existingProducers) {
                await consume(producerInfo);
             }
@@ -174,10 +176,10 @@ function App() {
             console.error("Error leaving room:", response.error);
             return;
          }
-         // 로컬 상태 초기화
+         // Khởi tạo trạng thái cục bộ
          setJoined(false);
          setPeers([]);
-         // 리소스 정리
+         // Xóa tài nguyên
          if (localStream) {
             localStream.getTracks().forEach((track) => track.stop());
             setLocalStream(null);
@@ -193,7 +195,7 @@ function App() {
          if (device) {
             setDevice(null);
          }
-         // 이벤트 리스너 제거
+         // Xóa event listener
          socket.off("new-producer", handleNewProducer);
       });
    };
@@ -265,6 +267,9 @@ function App() {
    };
 
    const consume = async ({ producerId, peerId, kind }) => {
+      console.log(">> consume producerId", producerId);
+      console.log(">> consume peerId", peerId);
+      console.log(">> consume kind", kind);
       const device = deviceRef.current;
       const recvTransport = recvTransportRef.current;
       if (!device || !recvTransport) {
