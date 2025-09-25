@@ -346,24 +346,15 @@ function App() {
             const remoteStream = new MediaStream();
             remoteStream.addTrack(consumer.track);
 
-            console.log(">> consume remoteStream", remoteStream);
-
             if (consumer.kind === "video") {
                const videoElement = document.createElement("video");
                videoElement.srcObject = remoteStream;
                videoElement.autoplay = true;
                videoElement.playsInline = true;
-               videoElement.muted = true;
                videoElement.width = 200;
                videoElement.id = `video-${consumerKey}`;
                videoElement.style.margin = "5px";
                document.getElementById("remote-media").appendChild(videoElement);
-               try {
-                  await videoElement.play();
-                  console.log("Video playing for:", consumerKey);
-               } catch (err) {
-                  console.error("Video playback failed:", err);
-               }
                console.log("Added video element for:", consumerKey);
             } else if (consumer.kind === "audio") {
                const audioElement = document.createElement("audio");
