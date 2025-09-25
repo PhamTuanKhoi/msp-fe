@@ -25,6 +25,48 @@ function App() {
    const deviceRef = useRef(null);
    const recvTransportRef = useRef(null);
 
+   // Debug functions
+   const debugMediaStream = (stream, label) => {
+      console.log(`=== ${label} ===`);
+      console.log("Stream active:", stream.active);
+      console.log("Stream id:", stream.id);
+
+      const tracks = stream.getTracks();
+      tracks.forEach((track, index) => {
+         console.log(`Track ${index}:`, {
+            kind: track.kind,
+            enabled: track.enabled,
+            muted: track.muted,
+            readyState: track.readyState,
+            label: track.label,
+            settings: track.getSettings ? track.getSettings() : "N/A",
+         });
+      });
+   };
+
+   const debugVideoElement = (videoElement, label) => {
+      console.log(`=== Video Element ${label} ===`);
+      console.log("Video src:", videoElement.src);
+      console.log("Video srcObject:", videoElement.srcObject);
+      console.log("Video readyState:", videoElement.readyState);
+      console.log("Video networkState:", videoElement.networkState);
+      console.log("Video paused:", videoElement.paused);
+      console.log("Video muted:", videoElement.muted);
+      console.log("Video autoplay:", videoElement.autoplay);
+      console.log("Video width x height:", videoElement.videoWidth, "x", videoElement.videoHeight);
+      console.log("Video in DOM:", document.body.contains(videoElement));
+   };
+
+   const debugVideoTrack = (track) => {
+      console.log("Video track info:", {
+         kind: track.kind,
+         enabled: track.enabled,
+         muted: track.muted,
+         readyState: track.readyState,
+         settings: track.getSettings ? track.getSettings() : "N/A",
+      });
+   };
+
    useEffect(() => {
       const newSocket = io(SERVER_URL);
       setSocket(newSocket);
@@ -52,7 +94,7 @@ function App() {
       const newDevice = new mediasoupClient.Device();
       await newDevice.load({ routerRtpCapabilities: rtpCapabilities });
       setDevice(newDevice);
-      deviceRef.current = newDevice; // deviceRef에 값 할당
+      deviceRef.current = newDevice;
       return newDevice;
    };
 
@@ -144,30 +186,21 @@ function App() {
 
             console.log(">> joinRoom response", response);
 
-            // Tạo Device và tải
             const newDevice = await createDevice(rtpCapabilities);
-
-            // Tạo Transport để gửi
             const newSendTransport = createSendTransport(newDevice, sendTransportOptions);
-
-            // tạo Transport để nhận
             const newRecvTransport = createRecvTransport(newDevice, recvTransportOptions);
 
             socket.on("new-producer", handleNewProducer);
 
-            // Lấy stream âm thanh và tạo Producer
             const audioTrack = await getLocalAudioStreamAndTrack();
             const newAudioProducer = await newSendTransport.produce({
                track: audioTrack,
             });
 
             setAudioProducer(newAudioProducer);
-
-            // Cập nhật danh sách người tham gia
             setPeers(peerIds.filter((id) => id !== socket.id));
             console.log(">> setPeers", peerIds);
 
-            // Tạo Consumer cho các Producer cũ
             console.log("Existing producers:", existingProducers);
             for (const producerInfo of existingProducers) {
                console.log("Consuming existing producer:", producerInfo);
@@ -187,23 +220,20 @@ function App() {
             console.error("Error leaving room:", response.error);
             return;
          }
-         // Khởi tạo trạng thái cục bộ
+
          setJoined(false);
          setPeers([]);
 
-         // Cleanup consumers
          consumers.forEach(({ consumer }) => {
             consumer.close();
          });
          setConsumers(new Map());
 
-         // Clear remote media elements
          const remoteMediaDiv = document.getElementById("remote-media");
          if (remoteMediaDiv) {
             remoteMediaDiv.innerHTML = "";
          }
 
-         // Xóa tài nguyên
          if (localStream) {
             localStream.getTracks().forEach((track) => track.stop());
             setLocalStream(null);
@@ -219,7 +249,7 @@ function App() {
          if (device) {
             setDevice(null);
          }
-         // Xóa event listener
+
          socket.off("new-producer", handleNewProducer);
       });
    };
@@ -237,8 +267,6 @@ function App() {
       }
 
       const videoTrack = stream.getVideoTracks()[0];
-
-      // 비디오 Producer 생성
       const newVideoProducer = await sendTransport.produce({ track: videoTrack });
       setVideoProducer(newVideoProducer);
    };
@@ -301,7 +329,6 @@ function App() {
          return;
       }
 
-      // Check if consumer already exists
       const consumerKey = `${peerId}-${producerId}`;
       if (consumers.has(consumerKey)) {
          console.log("Consumer already exists:", consumerKey);
@@ -332,29 +359,89 @@ function App() {
                rtpParameters: consumerData.rtpParameters,
             });
 
-            // Consumer를 resume합니다.
             await consumer.resume();
 
-            // Store consumer
             setConsumers((prev) => {
                const newConsumers = new Map(prev);
                newConsumers.set(consumerKey, { consumer, peerId, producerId, kind });
                return newConsumers;
             });
 
-            // 수신한 미디어를 재생
             const remoteStream = new MediaStream();
             remoteStream.addTrack(consumer.track);
 
+            debugMediaStream(remoteStream, `Remote Stream ${consumerKey}`);
+            console.log(">> consume remoteStream", remoteStream);
+
             if (consumer.kind === "video") {
+               debugVideoTrack(consumer.track);
+
                const videoElement = document.createElement("video");
                videoElement.srcObject = remoteStream;
                videoElement.autoplay = true;
                videoElement.playsInline = true;
+               videoElement.muted = true; // Fix autoplay policy issue
                videoElement.width = 200;
                videoElement.id = `video-${consumerKey}`;
                videoElement.style.margin = "5px";
+               videoElement.style.border = "1px solid blue"; // Debug CSS
+               videoElement.style.background = "black"; // Debug CSS
+
+               // Add extensive event listeners for debugging
+               videoElement.addEventListener("loadstart", () =>
+                  console.log("Video loadstart:", consumerKey)
+               );
+               videoElement.addEventListener("loadedmetadata", () =>
+                  console.log("Video metadata loaded:", consumerKey)
+               );
+               videoElement.addEventListener("loadeddata", () =>
+                  console.log("Video loadeddata:", consumerKey)
+               );
+               videoElement.addEventListener("canplay", () =>
+                  console.log("Video canplay:", consumerKey)
+               );
+               videoElement.addEventListener("canplaythrough", () =>
+                  console.log("Video canplaythrough:", consumerKey)
+               );
+               videoElement.addEventListener("playing", () =>
+                  console.log("Video playing:", consumerKey)
+               );
+               videoElement.addEventListener("pause", () =>
+                  console.log("Video paused:", consumerKey)
+               );
+               videoElement.addEventListener("ended", () =>
+                  console.log("Video ended:", consumerKey)
+               );
+               videoElement.addEventListener("error", (e) => {
+                  console.error("Video element error:", e);
+                  console.error("Video error details:", {
+                     error: videoElement.error,
+                     networkState: videoElement.networkState,
+                     readyState: videoElement.readyState,
+                  });
+               });
+
+               videoElement.onerror = (e) => {
+                  console.error("Video element error:", e);
+               };
+
+               videoElement.onloadedmetadata = () => {
+                  console.log("Video metadata loaded for:", consumerKey);
+               };
+
                document.getElementById("remote-media").appendChild(videoElement);
+
+               // Debug after adding to DOM
+               setTimeout(() => {
+                  debugVideoElement(videoElement, consumerKey);
+               }, 1000);
+
+               // Try manual play if autoplay fails
+               videoElement.play().catch((err) => {
+                  console.error("Auto video play failed:", err);
+                  console.log("You may need to click 'Play All Remote Videos' button");
+               });
+
                console.log("Added video element for:", consumerKey);
             } else if (consumer.kind === "audio") {
                const audioElement = document.createElement("audio");
@@ -365,7 +452,6 @@ function App() {
                audioElement.style.margin = "5px";
                document.getElementById("remote-media").appendChild(audioElement);
 
-               // 브라우저의 자동재생 정책을 우회하기 위해 재생 시도
                try {
                   await audioElement.play();
                   console.log("Audio playing for:", consumerKey);
@@ -375,6 +461,42 @@ function App() {
             }
          }
       );
+   };
+
+   // Debug functions for buttons
+   const playAllRemoteVideos = () => {
+      const videos = document.querySelectorAll("#remote-media video");
+      videos.forEach(async (video, index) => {
+         try {
+            await video.play();
+            console.log(`Video ${index} played successfully`);
+         } catch (err) {
+            console.error(`Video ${index} play failed:`, err);
+         }
+      });
+   };
+
+   const debugRemoteMedia = () => {
+      const remoteMediaDiv = document.getElementById("remote-media");
+      console.log("Remote media children:", remoteMediaDiv.children.length);
+      Array.from(remoteMediaDiv.children).forEach((child, index) => {
+         console.log(`Child ${index}:`, child.tagName, child.id);
+         if (child.tagName === "VIDEO") {
+            debugVideoElement(child, `Remote Video ${index}`);
+         }
+      });
+   };
+
+   const debugConsumers = () => {
+      console.log("Current consumers:", Array.from(consumers.keys()));
+      consumers.forEach((value, key) => {
+         console.log(`Consumer ${key}:`, {
+            kind: value.kind,
+            peerId: value.peerId,
+            producerId: value.producerId,
+            track: value.consumer.track,
+         });
+      });
    };
 
    return (
@@ -403,6 +525,23 @@ function App() {
                </button>
             </div>
          )}
+
+         {/* Debug Controls */}
+         {joined && (
+            <div style={{ margin: "20px 0", padding: "10px", border: "1px solid #ccc" }}>
+               <h3>Debug Controls</h3>
+               <button onClick={playAllRemoteVideos} style={{ margin: "5px" }}>
+                  Play All Remote Videos
+               </button>
+               <button onClick={debugRemoteMedia} style={{ margin: "5px" }}>
+                  Debug Remote Media
+               </button>
+               <button onClick={debugConsumers} style={{ margin: "5px" }}>
+                  Debug Consumers
+               </button>
+            </div>
+         )}
+
          <div>
             <h2>Local Video</h2>
             <video ref={localVideoRef} autoPlay playsInline muted width="400"></video>
@@ -417,8 +556,29 @@ function App() {
          </div>
          <div>
             <h2>Remote Media</h2>
-            <div id="remote-media"></div>
+            <div
+               id="remote-media"
+               style={{
+                  border: "2px solid red", // Debug CSS
+                  minHeight: "200px",
+                  background: "#f0f0f0",
+                  padding: "10px",
+               }}
+            ></div>
          </div>
+
+         {/* Add CSS for debugging */}
+         <style jsx>{`
+            #remote-media video {
+               border: 1px solid blue !important;
+               display: block !important;
+               visibility: visible !important;
+               opacity: 1 !important;
+               max-width: 100%;
+               height: auto;
+               background: black;
+            }
+         `}</style>
       </div>
    );
 }
